@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import '../models/patient.dart';
 
 class AddPatient extends StatefulWidget {
-  final Function(Map<String, String>) onAddPatient;
+  final Function(Patient) onAddPatient;
 
-  AddPatient({required this.onAddPatient});
+  const AddPatient({super.key, required this.onAddPatient});
 
   @override
   _AddPatientState createState() => _AddPatientState();
@@ -21,12 +22,12 @@ class _AddPatientState extends State<AddPatient> {
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
       // Create new patient data
-      final newPatient = {
-        'name': _nameController.text,
-        'condition': _condition,
-        'age': _ageController.text,
-        'contact': _contactController.text,
-      };
+      final newPatient = Patient(
+        name: _nameController.text,
+        condition: _condition,
+        age: _ageController.text,
+        contact: _contactController.text,
+      );
 
       widget.onAddPatient(newPatient); // Pass the new patient data back
       Navigator.pop(context); // Go back to the Patient List screen
@@ -115,8 +116,8 @@ class _AddPatientState extends State<AddPatient> {
                 },
                 items: ['Normal', 'Critical']
                     .map((condition) => DropdownMenuItem(
-                          child: Text(condition),
                           value: condition,
+                          child: Text(condition),
                         ))
                     .toList(),
                 validator: (value) {
@@ -131,7 +132,6 @@ class _AddPatientState extends State<AddPatient> {
               // Add Patient Button (Full Width)
               ElevatedButton(
                 onPressed: _submitForm,
-                child: Text('Add Patient'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   padding: EdgeInsets.symmetric(vertical: 15),
@@ -139,6 +139,7 @@ class _AddPatientState extends State<AddPatient> {
                       borderRadius: BorderRadius.circular(10)),
                   minimumSize: Size(double.infinity, 50), // Full width
                 ),
+                child: Text('Add Patient'),
               ),
             ],
           ),
