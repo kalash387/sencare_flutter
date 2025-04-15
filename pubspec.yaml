@@ -1,11 +1,11 @@
 name: sencare_flutter
 description: "A new Flutter project."
-publish_to: 'none'
+publish_to: "none"
 version: 0.1.0
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
-  
+
 dependencies:
   flutter:
     sdk: flutter
@@ -15,11 +15,15 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
+  mockito: ^5.4.3
+  build_runner: ^2.4.8
   flutter_lints: ^5.0.0
 
 flutter:
   assets:
     - assets/logo.png
     - assets/patient1.png
-  
+
   uses-material-design: true
