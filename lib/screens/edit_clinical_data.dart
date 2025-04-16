@@ -1,31 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/health_calculator.dart';
+import '../models/clinical_data.dart';
 
-class AddClinicalData extends StatefulWidget {
+class EditClinicalData extends StatefulWidget {
   final String patientName;
-  final Function(Map<String, String>) onAddClinicalData;
+  final ClinicalData clinicalData;
+  final Function(ClinicalData) onSaveClinicalData;
 
-  const AddClinicalData({
+  const EditClinicalData({
     Key? key,
     required this.patientName,
-    required this.onAddClinicalData,
+    required this.clinicalData,
+    required this.onSaveClinicalData,
   }) : super(key: key);
 
   @override
-  _AddClinicalDataState createState() => _AddClinicalDataState();
+  _EditClinicalDataState createState() => _EditClinicalDataState();
 }
 
-class _AddClinicalDataState extends State<AddClinicalData> {
+class _EditClinicalDataState extends State<EditClinicalData> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _dateController = TextEditingController();
-  final TextEditingController _readingController = TextEditingController();
+  late TextEditingController _dateController;
+  late TextEditingController _readingController;
 
-  String _selectedTestType = 'Blood Pressure';
-  String _condition = 'Normal';
+  late String _selectedTestType;
+  late String _condition;
   bool _isCalculating = false;
 
-  // Updated test types to match the health calculator
+  // Test types to match the health calculator
   final List<String> _testTypes = [
     'Blood Pressure',
     'Heart Rate',
@@ -52,8 +55,18 @@ class _AddClinicalDataState extends State<AddClinicalData> {
   @override
   void initState() {
     super.initState();
-    // Set default date to today
-    _dateController.text = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    // Initialize controllers with existing data
+    _dateController = TextEditingController(text: widget.clinicalData.date);
+    _readingController = TextEditingController(text: widget.clinicalData.reading);
+    
+    // Handle 'Glucose Level' by mapping it to 'Blood Glucose'
+    if (widget.clinicalData.testType == 'Glucose Level') {
+      _selectedTestType = 'Blood Glucose';
+    } else {
+      _selectedTestType = widget.clinicalData.testType;
+    }
+    
+    _condition = widget.clinicalData.condition;
   }
 
   @override
@@ -87,7 +100,7 @@ class _AddClinicalDataState extends State<AddClinicalData> {
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: DateTime.tryParse(widget.clinicalData.date) ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2101),
       builder: (context, child) {
@@ -118,7 +131,7 @@ class _AddClinicalDataState extends State<AddClinicalData> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Add Clinical Data',
+          'Edit Clinical Data',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         elevation: 0,
@@ -180,7 +193,7 @@ class _AddClinicalDataState extends State<AddClinicalData> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Clinical Data Details',
+                      'Edit Clinical Data',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -366,33 +379,58 @@ class _AddClinicalDataState extends State<AddClinicalData> {
 
                     SizedBox(height: 32),
 
-                    // Submit button
+                    // Save button
                     Container(
                       width: double.infinity,
                       height: 54,
                       child: ElevatedButton(
                         onPressed: () async {
                           if (_formKey.currentState!.validate()) {
-                            final data = {
-                              'date': _dateController.text,
-                              'testType': _selectedTestType,
-                              'reading': _readingController.text,
-                              'condition': _condition,
-                            };
+                            // Create updated clinical data
+                            final updatedData = ClinicalData(
+                              id: widget.clinicalData.id,
+                              patientId: widget.clinicalData.patientId,
+                              date: _dateController.text,
+                              // If original was 'Glucose Level', maintain that naming for consistency
+                              testType: widget.clinicalData.testType == 'Glucose Level' ? 
+                                  'Glucose Level' : _selectedTestType,
+                              reading: _readingController.text,
+                              condition: _condition,
+                            );
 
-                            // Call the callback and wait for the result
-                            final result = await widget.onAddClinicalData(data);
+                            // Call the callback to update the data
+                            final result = await widget.onSaveClinicalData(updatedData);
                             
-                            // Return the result to the parent screen
                             if (result != null) {
-                              Navigator.pop(context, result); 
-                            } else {
-                              Navigator.pop(context, {'success': true}); // Legacy support
+                              // Check if it's the new Map format or old bool format
+                              bool success = false;
+                              if (result is Map) {
+                                success = result['success'] == true;
+                              } else if (result is bool) {
+                                success = result;
+                              }
+                              
+                              if (success) {
+                                // Return the updated data to indicate success
+                                Navigator.pop(context, {
+                                  'success': true,
+                                  'data': updatedData
+                                });
+                              } else {
+                                // Show error message
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to update clinical data'),
+                                    backgroundColor: Colors.red,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
                             }
                           }
                         },
                         child: Text(
-                          'Add Data',
+                          'Save Changes',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -415,4 +453,4 @@ class _AddClinicalDataState extends State<AddClinicalData> {
       ),
     );
   }
-}
+} 

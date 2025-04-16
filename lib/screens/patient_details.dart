@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'add_clinical_data.dart';
+import 'edit_clinical_data.dart';
 import '../services/health_calculator.dart';
 import '../models/patient.dart';
 import '../models/clinical_data.dart';
@@ -35,33 +36,43 @@ class _PatientDetailsState extends State<PatientDetails>
 
   Future<void> _fetchClinicalData() async {
     if (currentPatient.id == null) {
-      setState(() {
-        _isLoading = false;
-        clinicalData = [];
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          clinicalData = [];
+        });
+      }
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _hasError = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+    }
 
     try {
       final data = await ApiService.getPatientClinicalData(currentPatient.id!);
-      setState(() {
-        clinicalData = data.map((json) => ClinicalData.fromJson(json)).toList();
-        _isLoading = false;
-      });
+      
+      // Check if widget is still mounted before updating state
+      if (mounted) {
+        setState(() {
+          clinicalData = data.map((json) => ClinicalData.fromJson(json)).toList();
+          _isLoading = false;
+        });
 
-      // Update patient condition based on clinical data
-      _updatePatientCondition();
+        // Update patient condition based on clinical data
+        await _updatePatientCondition();
+      }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-        _errorMessage = 'Failed to load clinical data: ${e.toString()}';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = 'Failed to load clinical data: ${e.toString()}';
+        });
+      }
     }
   }
 
@@ -77,7 +88,23 @@ class _PatientDetailsState extends State<PatientDetails>
 
   // Update patient's condition based on clinical data
   Future<void> _updatePatientCondition() async {
-    if (clinicalData.isEmpty) return;
+    // If there's no clinical data, set condition to Normal
+    if (clinicalData.isEmpty) {
+      if (currentPatient.condition != 'Normal') {
+        if (mounted) {
+          setState(() {
+            currentPatient.condition = 'Normal';
+          });
+        } else {
+          // Update the condition without setState
+          currentPatient.condition = 'Normal';
+        }
+        
+        // Update the patient in the database
+        await _savePatientCondition('Normal');
+      }
+      return;
+    }
 
     // Convert ClinicalData objects to Map<String, String> for health calculator
     List<Map<String, String>> clinicalDataMaps =
@@ -89,30 +116,53 @@ class _PatientDetailsState extends State<PatientDetails>
 
     // Update the patient's condition if it has changed
     if (newCondition != currentPatient.condition) {
-      setState(() {
+      if (mounted) {
+        setState(() {
+          currentPatient.condition = newCondition;
+        });
+      } else {
+        // Update the condition without setState
         currentPatient.condition = newCondition;
-      });
+      }
 
       // Update the patient in the database
-      if (currentPatient.id != null) {
-        try {
-          await ApiService.updatePatient(
-              currentPatient.id!, currentPatient.toJson());
+      await _savePatientCondition(newCondition);
+    }
+  }
+  
+  // Helper method to save patient condition to the database
+  Future<void> _savePatientCondition(String newCondition) async {
+    if (currentPatient.id != null) {
+      try {
+        await ApiService.updatePatient(
+            currentPatient.id!, currentPatient.toJson());
 
-          // Notify parent about the updated patient
-          if (widget.onUpdatePatient != null) {
-            widget.onUpdatePatient!(currentPatient);
-          }
+        // Notify parent about the updated patient
+        if (widget.onUpdatePatient != null) {
+          widget.onUpdatePatient!(currentPatient);
+        }
 
+        // Check if widget is still mounted before showing SnackBar
+        if (mounted) {
           // Show a notification to the user
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Patient condition updated to $newCondition'),
+              content: Text(
+                'Patient condition updated to $newCondition',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               backgroundColor: _getConditionColor(newCondition),
               behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'OK',
+                textColor: Colors.white,
+                onPressed: () {},
+              ),
             ),
           );
-        } catch (e) {
+        }
+      } catch (e) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content:
@@ -194,6 +244,17 @@ class _PatientDetailsState extends State<PatientDetails>
                 decoration: BoxDecoration(
                   color: conditionColor.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: conditionColor.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: conditionColor.withOpacity(0.5),
+                    width: 1.5,
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -202,15 +263,16 @@ class _PatientDetailsState extends State<PatientDetails>
                       currentPatient.condition == 'Critical'
                           ? Icons.warning_amber_rounded
                           : Icons.check_circle_outline,
-                      size: 16,
+                      size: 18,
                       color: conditionColor,
                     ),
-                    SizedBox(width: 4),
+                    SizedBox(width: 6),
                     Text(
                       currentPatient.condition,
                       style: TextStyle(
                         color: conditionColor,
                         fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
                     ),
                   ],
@@ -320,7 +382,8 @@ class _PatientDetailsState extends State<PatientDetails>
                           currentPatient.condition == 'Critical'
                               ? Icons.warning_amber_rounded
                               : Icons.check_circle_outline,
-                          valueColor: conditionColor),
+                          valueColor: conditionColor,
+                          highlight: true),
                     ],
                   ),
                 ),
@@ -404,18 +467,20 @@ class _PatientDetailsState extends State<PatientDetails>
             child: ElevatedButton.icon(
               onPressed: () async {
                 if (currentPatient.id == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                          'Cannot add clinical data: Patient ID is missing'),
-                      backgroundColor: Colors.red,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            'Cannot add clinical data: Patient ID is missing'),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
                   return;
                 }
 
-                Navigator.push(
+                final dataAdded = await Navigator.push<Map<String, dynamic>>(
                   context,
                   MaterialPageRoute(
                     builder: (context) => AddClinicalData(
@@ -432,40 +497,98 @@ class _PatientDetailsState extends State<PatientDetails>
                           );
 
                           // Save to API
-                          final result = await ApiService.addClinicalData(
+                          final responseData = await ApiService.addClinicalData(
                             currentPatient.id!,
                             newClinicalData.toJson(),
                           );
-
-                          // Add to local list with the received ID
-                          setState(() {
-                            clinicalData.add(ClinicalData.fromJson(result));
-                          });
-
-                          // Update patient's condition based on all clinical data
-                          _updatePatientCondition();
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Clinical data added successfully'),
-                              backgroundColor: Colors.green,
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
+                          
+                          // Return success status and data
+                          if (responseData != null) {
+                            // Extract ID from response - handle both formats
+                            String? id;
+                            if (responseData['_id'] != null) {
+                              id = responseData['_id'].toString();
+                            } else if (responseData['id'] != null) {
+                              id = responseData['id'].toString();
+                            } else if (responseData['data'] != null && responseData['data'] is Map) {
+                              // If there's a nested data object
+                              var nestedData = responseData['data'] as Map;
+                              if (nestedData['_id'] != null) {
+                                id = nestedData['_id'].toString();
+                              } else if (nestedData['id'] != null) {
+                                id = nestedData['id'].toString();
+                              }
+                            }
+                            
+                            // Create a new clinical data with the ID from the response
+                            if (id != null) {
+                              final clinicalDataWithId = ClinicalData(
+                                id: id,
+                                patientId: currentPatient.id!,
+                                date: data['date'] ?? '',
+                                testType: data['testType'] ?? '',
+                                reading: data['reading'] ?? '',
+                                condition: data['condition'] ?? 'Normal',
+                              );
+                              
+                              return {
+                                'success': true,
+                                'data': clinicalDataWithId
+                              };
+                            }
+                          }
+                          
+                          // Fallback - perform a fetch to get the latest data
+                          return {'success': true, 'needsRefresh': true};
                         } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  'Failed to add clinical data: ${e.toString()}'),
-                              backgroundColor: Colors.red,
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
+                          print('Failed to add clinical data: ${e.toString()}');
+                          
+                          // Check if the error message contains success indicators
+                          String errorMsg = e.toString().toLowerCase();
+                          if (errorMsg.contains('"status":"success"') || 
+                              errorMsg.contains('200')) {
+                            // This is actually a success case
+                            return {'success': true, 'needsRefresh': true};
+                          }
+                          
+                          return {'success': false};
                         }
                       },
                     ),
                   ),
                 );
+                
+                // If data was added successfully
+                if (dataAdded != null && dataAdded['success'] == true) {
+                  if (dataAdded['data'] != null) {
+                    // Get the new clinical data and add it to the list
+                    final ClinicalData newData = dataAdded['data'];
+                    
+                    // Check if widget is still mounted before updating the state
+                    if (mounted) {
+                      setState(() {
+                        clinicalData.add(newData);
+                      });
+                    }
+                  } else if (dataAdded['needsRefresh'] == true) {
+                    // If we need to refresh the data from the server
+                    await _fetchClinicalData();
+                  }
+                  
+                  // Update patient condition based on the new clinical data
+                  await _updatePatientCondition();
+                  
+                  // Show success message if still mounted
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Clinical data added successfully'),
+                        backgroundColor: Colors.green,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                }
               },
               icon: Icon(Icons.add_circle_outline, color: Colors.white),
               label: Text('Add Clinical Data'),
@@ -501,80 +624,222 @@ class _PatientDetailsState extends State<PatientDetails>
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.vertical,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: DataTable(
-                          headingRowColor:
-                              MaterialStateProperty.all(Colors.grey[100]),
-                          headingTextStyle: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
+                    child: DataTable(
+                      dividerThickness: 1,
+                      border: TableBorder(
+                        horizontalInside: BorderSide(
+                          width: 1, 
+                          color: Colors.grey.shade200
+                        ),
+                      ),
+                      headingRowColor:
+                          MaterialStateProperty.all(Colors.grey[100]),
+                      headingTextStyle: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
+                      dataRowColor: MaterialStateProperty.all(Colors.white),
+                      horizontalMargin: 12,
+                      columnSpacing: 16,
+                      columns: [
+                        DataColumn(
+                          label: Container(
+                            width: 70,
+                            child: Text('Date'),
                           ),
-                          dataRowColor: MaterialStateProperty.all(Colors.white),
-                          horizontalMargin: 24,
-                          columnSpacing: 40,
-                          columns: [
-                            DataColumn(
-                              label: Container(
-                                width: 80,
-                                child: Text('Date'),
-                              ),
-                            ),
-                            DataColumn(
-                              label: Container(
-                                width: 100,
-                                child: Text('Test Type'),
-                              ),
-                            ),
-                            DataColumn(
-                              label: Container(
-                                width: 80,
-                                child: Text('Reading'),
-                              ),
-                            ),
-                            DataColumn(
-                              label: Container(
-                                width: 100,
-                                child: Text('Condition'),
+                        ),
+                        DataColumn(
+                          label: Container(
+                            width: 90,
+                            child: Text('Test Type'),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Container(
+                            width: 80,
+                            child: Text('Reading'),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Container(
+                            width: 100,
+                            child: Text('Actions', overflow: TextOverflow.visible),
+                          ),
+                        ),
+                      ],
+                      rows: clinicalData.map((data) {
+                        return DataRow(
+                          cells: [
+                            DataCell(Text(data.date)),
+                            DataCell(Text(data.testType)),
+                            DataCell(Text(data.reading)),
+                            DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  Container(
+                                    width: 40,
+                                    child: IconButton(
+                                      icon: Icon(Icons.edit, size: 20, color: Colors.blue),
+                                      padding: EdgeInsets.zero,
+                                      constraints: BoxConstraints(),
+                                      onPressed: () async {
+                                        // First get the current data for reference
+                                        ClinicalData currentData = data;
+                                        
+                                        final result = await Navigator.push<Map<String, dynamic>>(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => EditClinicalData(
+                                              patientName: currentPatient.name,
+                                              clinicalData: currentData,
+                                              onSaveClinicalData: (updatedData) async {
+                                                if (updatedData.id == null) {
+                                                  return false;
+                                                }
+                                                
+                                                try {
+                                                  // Update via API
+                                                  await ApiService.updateClinicalData(
+                                                    updatedData.patientId,
+                                                    updatedData.id!,
+                                                    updatedData.toJson(),
+                                                  );
+                                                  
+                                                  // Return the updated data and success status
+                                                  return {
+                                                    'success': true,
+                                                    'data': updatedData
+                                                  };
+                                                } catch (e) {
+                                                  print('Failed to update clinical data: ${e.toString()}');
+                                                  return {
+                                                    'success': false
+                                                  };
+                                                }
+                                              },
+                                            ),
+                                          ),
+                                        );
+                                        
+                                        // Check if we got a successful result back
+                                        if (result != null && result['success'] == true) {
+                                          // Get the updated data
+                                          ClinicalData updatedData = result['data'];
+                                          
+                                          // Update the UI immediately - this setState is directly in this function's scope
+                                          if (mounted) {
+                                            setState(() {
+                                              // Find the index of the item and replace it
+                                              final index = clinicalData.indexWhere((item) => item.id == updatedData.id);
+                                              if (index != -1) {
+                                                clinicalData[index] = updatedData;
+                                              }
+                                            });
+                                          }
+                                          
+                                          // Update patient condition based on the updated clinical data
+                                          await _updatePatientCondition();
+                                          
+                                          // Show success message if still mounted
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Clinical data updated successfully'),
+                                                backgroundColor: Colors.green,
+                                                behavior: SnackBarBehavior.floating,
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 40,
+                                    child: IconButton(
+                                      icon: Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                                      padding: EdgeInsets.zero,
+                                      constraints: BoxConstraints(),
+                                      onPressed: () async {
+                                        final confirmed = await showDialog<bool>(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: Text('Delete Clinical Data'),
+                                            content: Text(
+                                                'Are you sure you want to delete this clinical data?'),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(context, false),
+                                                child: Text('Cancel'),
+                                              ),
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(context, true),
+                                                child: Text('Delete'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+
+                                        if (confirmed == true) {
+                                          try {
+                                            if (data.id == null) return;
+                                            
+                                            // Store ID for reference after deletion
+                                            final String dataId = data.id!;
+                                            
+                                            // Delete via API
+                                            bool success = await ApiService.deleteClinicalData(
+                                              data.patientId,
+                                              dataId,
+                                            );
+                                            
+                                            if (success) {
+                                              // Update UI by removing the item from the list if still mounted
+                                              if (mounted) {
+                                                setState(() {
+                                                  clinicalData.removeWhere((item) => item.id == dataId);
+                                                });
+                                              }
+                                              
+                                              // Update patient condition after deletion of clinical data
+                                              await _updatePatientCondition();
+                                              
+                                              // Show success message if still mounted
+                                              if (mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text('Clinical data deleted successfully'),
+                                                    backgroundColor: Colors.green,
+                                                    behavior: SnackBarBehavior.floating,
+                                                  ),
+                                                );
+                                              }
+                                            }
+                                          } catch (e) {
+                                            if (mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Failed to delete clinical data: ${e.toString()}'),
+                                                  backgroundColor: Colors.red,
+                                                  behavior: SnackBarBehavior.floating,
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
-                          rows: clinicalData.map((data) {
-                            return DataRow(
-                              cells: [
-                                DataCell(Text(data.date)),
-                                DataCell(Text(data.testType)),
-                                DataCell(Text(data.reading)),
-                                DataCell(
-                                  Container(
-                                    width: 90,
-                                    padding: EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: data.condition == 'Critical'
-                                          ? Colors.red[100]
-                                          : Colors.green[100],
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      data.condition,
-                                      style: TextStyle(
-                                        color: data.condition == 'Critical'
-                                            ? Colors.red[900]
-                                            : Colors.green[900],
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }).toList(),
-                        ),
-                      ),
+                        );
+                      }).toList(),
                     ),
                   ),
                 ),
@@ -584,16 +849,25 @@ class _PatientDetailsState extends State<PatientDetails>
   }
 
   Widget _buildDetailItem(String label, String value, IconData icon,
-      {Color? valueColor}) {
+      {Color? valueColor, bool highlight = false}) {
     return Row(
       children: [
         Container(
           padding: EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: highlight && valueColor != null 
+                ? valueColor.withOpacity(0.1) 
+                : Colors.grey[100],
             borderRadius: BorderRadius.circular(10),
+            border: highlight && valueColor != null 
+                ? Border.all(color: valueColor.withOpacity(0.4), width: 1.5) 
+                : null,
           ),
-          child: Icon(icon, color: Colors.grey[700], size: 22),
+          child: Icon(icon, 
+                 color: highlight && valueColor != null 
+                     ? valueColor 
+                     : Colors.grey[700], 
+                 size: 22),
         ),
         SizedBox(width: 16),
         Column(
@@ -610,7 +884,7 @@ class _PatientDetailsState extends State<PatientDetails>
             Text(
               value,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: highlight ? 18 : 16,
                 fontWeight: FontWeight.bold,
                 color: valueColor ?? Colors.grey[800],
               ),

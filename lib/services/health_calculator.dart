@@ -7,6 +7,7 @@ class HealthCalculator {
     'Respiratory Rate': 0.7,
     'Oxygen Saturation': 0.9,
     'Glucose Level': 0.5,
+    'Blood Glucose': 0.5,
     'BMI': 0.4,
     'Cholesterol': 0.5,
     'Blood Cell Count': 0.6,
@@ -42,6 +43,7 @@ class HealthCalculator {
 
     switch (testType) {
       case 'Glucose Level':
+      case 'Blood Glucose':
         return numericValue < 70 || numericValue > 180 ? 1.0 : 0.0;
       case 'Heart Rate':
         return numericValue < 60 || numericValue > 100 ? 1.0 : 0.0;
@@ -110,6 +112,7 @@ class HealthCalculator {
         case 'Heart Rate':
           return _analyzeHeartRate(reading);
         case 'Blood Glucose':
+        case 'Glucose Level':
           return _analyzeBloodGlucose(reading);
         case 'Cholesterol':
           return _analyzeCholesterol(reading);

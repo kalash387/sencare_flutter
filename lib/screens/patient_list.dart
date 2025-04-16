@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'add_patient.dart'; // Import AddPatient screen
+import 'edit_patient.dart'; // Import EditPatient screen
 import 'patient_details.dart';
 import '../services/api_service.dart';
 import '../models/patient.dart';
@@ -149,6 +150,66 @@ class _PatientListState extends State<PatientList> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to update patient: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  // Delete a patient
+  Future<void> _deletePatient(Patient patient) async {
+    try {
+      if (patient.id == null) {
+        throw Exception('Patient ID is required for deletion');
+      }
+      
+      // Show confirmation dialog
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Delete Patient'),
+          content: Text(
+            'Are you sure you want to delete ${patient.name}? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(
+                'Delete',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        ),
+      );
+      
+      if (confirmed != true) return;
+      
+      // Delete from API
+      await ApiService.deletePatient(patient.id!);
+      
+      // Remove from local list
+      setState(() {
+        patients.removeWhere((p) => p.id == patient.id);
+        _applyActiveFilter(); // Reapply filter to update the displayed list
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Patient deleted successfully'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete patient: ${e.toString()}'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
@@ -564,26 +625,69 @@ class _PatientListState extends State<PatientList> {
               ),
 
               // View Details Icon
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  icon: Icon(Icons.arrow_forward_ios, size: 16),
-                  color: Colors.grey[700],
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => PatientDetails(
-                          patient: patient,
-                          onUpdatePatient: _updatePatient,
-                        ),
-                      ),
-                    );
-                  },
-                ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: Icon(Icons.edit, size: 18),
+                      color: Colors.blue[700],
+                      onPressed: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => EditPatient(
+                              patient: patient,
+                              onPatientUpdated: (updatedPatient) {
+                                _updatePatient(updatedPatient);
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: Icon(Icons.delete_outline, size: 18),
+                      color: Colors.red[700],
+                      onPressed: () {
+                        _deletePatient(patient);
+                      },
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: Icon(Icons.arrow_forward_ios, size: 16),
+                      color: Colors.grey[700],
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PatientDetails(
+                              patient: patient,
+                              onUpdatePatient: _updatePatient,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

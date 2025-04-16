@@ -282,19 +282,32 @@ class ApiService {
   // Add clinical data for a patient
   static Future<Map<String, dynamic>> addClinicalData(
       String patientId, Map<String, dynamic> data) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/patients/$patientId/clinical-data'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(data),
-    );
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/patients/$patientId/clinical-data'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(data),
+      );
 
-    if (response.statusCode == 201) {
-      final responseData = jsonDecode(response.body);
-      _debugPrint('POST', '/patients/$patientId/clinical-data', responseData);
-      return responseData;
-    } else {
-      throw Exception(
-          'Failed to add clinical data: ${response.statusCode} - ${response.body}');
+      // Handle both 200 and 201 status codes
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Try to parse the response body if possible
+        try {
+          final responseData = jsonDecode(response.body);
+          _debugPrint('POST', '/patients/$patientId/clinical-data', responseData);
+          return responseData;
+        } catch (e) {
+          // If parsing fails, return a simplified success response
+          return {'status': 'success'};
+        }
+      } else {
+        throw Exception(
+            'Failed to add clinical data: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      // For network errors and other exceptions
+      print('Error in addClinicalData: ${e.toString()}');
+      throw e;
     }
   }
 
@@ -313,6 +326,56 @@ class ApiService {
       return data;
     } else {
       throw Exception('Failed to update patient: ${response.statusCode}');
+    }
+  }
+
+  // Update clinical data for a patient
+  static Future<Map<String, dynamic>> updateClinicalData(
+      String patientId, String dataId, Map<String, dynamic> data) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/patients/$patientId/clinical-data/$dataId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(data),
+    );
+
+    if (response.statusCode == 200) {
+      final responseData = jsonDecode(response.body);
+      _debugPrint('PUT', '/patients/$patientId/clinical-data/$dataId', responseData);
+      return responseData;
+    } else {
+      throw Exception(
+          'Failed to update clinical data: ${response.statusCode} - ${response.body}');
+    }
+  }
+
+  // Delete clinical data for a patient
+  static Future<bool> deleteClinicalData(
+      String patientId, String dataId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/patients/$patientId/clinical-data/$dataId'),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 204) {
+      _debugPrint('DELETE', '/patients/$patientId/clinical-data/$dataId', 'success');
+      return true;
+    } else {
+      throw Exception(
+          'Failed to delete clinical data: ${response.statusCode} - ${response.body}');
+    }
+  }
+
+  // Delete a patient
+  static Future<bool> deletePatient(String patientId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/patients/$patientId'),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 204) {
+      _debugPrint('DELETE', '/patients/$patientId', 'success');
+      return true;
+    } else {
+      throw Exception(
+          'Failed to delete patient: ${response.statusCode} - ${response.body}');
     }
   }
 }
